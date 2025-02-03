@@ -37,7 +37,7 @@ An AI-powered code review system that leverages swarm intelligence to analyze an
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/code-review-swarm.git
+git clone https://github.com/peytontolbert/code-review-swarm.git
 cd code-review-swarm
 ```
 
