@@ -1,0 +1,55 @@
+name: Code Review Swarm
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Run Code Review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get changed files
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD)
+          else
+            FILES=$(git diff --name-only HEAD^1 HEAD)
+          fi
+          
+          # Review each changed file
+          for file in $FILES; do
+            if [[ $file == *.py ]]; then
+              echo "Reviewing $file..."
+              python -c "import asyncio,json; from code_review_swarm import CodeReviewSwarm; async def review_file(file_path): code=open(file_path).read(); swarm=CodeReviewSwarm(); results=await swarm.review_code(code, file_path); comment=f'## Code Review Results for `{file_path}`\n\n'; comment+='\n'.join([f'### 🔴 High Priority Issues\n\n'+'\n'.join([f'- {i}\n' for i in results['high_priority']]) if results['high_priority'] else '', f'### 🟡 Medium Priority Issues\n\n'+'\n'.join([f'- {i}\n' for i in results['medium_priority']]) if results['medium_priority'] else '', f'### 🟢 Low Priority Issues\n\n'+'\n'.join([f'- {i}\n' for i in results['low_priority']]) if results['low_priority'] else '', f'### 💡 Suggestions\n\n'+'\n'.join([f'- {s}\n' for s in results['suggestions']]) if results['suggestions'] else '']); open('review_comment.txt','w').write(comment); asyncio.run(review_file('$file'))"
+              
+              # Post comment on PR
+              if [ "${{ github.event_name }}" == "pull_request" ]; then
+                gh pr comment ${{ github.event.pull_request.number }} --body-file review_comment.txt
+              fi
+            fi
+          done
+          
+      - name: Check for Critical Issues
+        if: failure()
+        run: |
+          echo "::error::Code review found critical issues. Please address them before merging."
+          exit 1 
